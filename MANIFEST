@@ -1,0 +1,19 @@
+Build.PL
+Changes
+lib/Text/Perfide/PartialAlign.pm
+MANIFEST			This list of files
+README
+t/00-load.t
+t/manifest.t
+t/pod-coverage.t
+t/pod.t
+t/findCommonHap.t
+Makefile.PL
+META.yml
+META.json
+bin/pf-partialalign
+t/findCommonHap_corresp.src
+t/findCommonHap.t
+t/get_corpus.t
+t/get_corpus.t.src
+t/seg_split.t
