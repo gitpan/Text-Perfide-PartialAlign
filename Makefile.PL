@@ -6,6 +6,7 @@ WriteMakefile
   'NAME' => 'Text::Perfide::PartialAlign',
   'VERSION_FROM' => 'lib/Text/Perfide/PartialAlign.pm',
   'PREREQ_PM' => {
+                   'Inline::Files' => 0,
                    'Test::More' => 0
                  },
   'INSTALLDIRS' => 'site',

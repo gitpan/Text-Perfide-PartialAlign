@@ -3,6 +3,7 @@ abstract: 'The great new Text::Perfide::PartialAlign!'
 author:
   - 'Andre Santos <andrefs@cpan.org>'
 build_requires:
+  Inline::Files: 0
   Test::More: 0
 configure_requires:
   Module::Build: 0.38
@@ -16,9 +17,9 @@ name: Text-Perfide-PartialAlign
 provides:
   Text::Perfide::PartialAlign:
     file: lib/Text/Perfide/PartialAlign.pm
-    version: 0.01_01
+    version: 0.01_02
 requires:
   perl: 5.006
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01_01
+version: 0.01_02

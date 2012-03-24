@@ -10,6 +10,7 @@ my $builder = Module::Build->new(
     dist_version_from   => 'lib/Text/Perfide/PartialAlign.pm',
     build_requires => {
         'Test::More' => 0,
+		'Inline::Files' => 0,
     },
 	configure_requires => { 'Module::Build' => 0.38 },
     requires => {
