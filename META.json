@@ -1,10 +1,10 @@
 {
-   "abstract" : "The great new Text::Perfide::PartialAlign!",
+   "abstract" : "Split large bitexts into smaller files.",
    "author" : [
       "Andre Santos <andrefs@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.120351",
+   "generated_by" : "Module::Build version 0.4, CPAN::Meta::Converter version 2.112150",
    "license" : [
       "perl_5"
    ],
@@ -16,8 +16,8 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "Inline::Files" : "0",
-            "Test::More" : "0"
+            "Inline::Files" : 0,
+            "Test::More" : 0
          }
       },
       "configure" : {
@@ -34,7 +34,7 @@
    "provides" : {
       "Text::Perfide::PartialAlign" : {
          "file" : "lib/Text/Perfide/PartialAlign.pm",
-         "version" : "0.01_02"
+         "version" : "0.01_03"
       }
    },
    "release_status" : "testing",
@@ -43,5 +43,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.01_02"
+   "version" : "0.01_03"
 }

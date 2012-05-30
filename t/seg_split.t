@@ -1,7 +1,7 @@
 #!/usr/bin/env perl 
 use strict; use warnings;
 use Test::More tests => 4;
-use Text::Perfide::PartialAlign;
+use Text::Perfide::PartialAlign qw/seg_split/;
 use Inline::Files;
 
 my $pml = join '', <PML>;

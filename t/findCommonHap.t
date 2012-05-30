@@ -1,7 +1,7 @@
 #!/usr/bin/env perl 
 use strict; use warnings;
 use Test::More tests => 2;
-use Text::Perfide::PartialAlign;
+use Text::Perfide::PartialAlign qw/findCommonHap/;
 
 my $l1Hap = {
 	wordX  => 1,

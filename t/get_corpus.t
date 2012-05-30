@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use Test::More tests => 2;
-use Text::Perfide::PartialAlign;
+use Text::Perfide::PartialAlign qw/get_corpus/;
 
 my $file = 't/get_corpus.t.src';
 my ($corpus,$offsets) = get_corpus($file);

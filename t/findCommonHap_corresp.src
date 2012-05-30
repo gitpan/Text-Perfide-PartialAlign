@@ -1,3 +1,4 @@
+langs: l1, l2
 word1				= word19
 word6				= lixo1,word11,lixo2
 lixo3,word7,lixo4 	= word12

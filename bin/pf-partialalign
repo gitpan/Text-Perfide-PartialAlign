@@ -1,166 +1,49 @@
-#!/usr/bin/perl -ws
+#!/usr/bin/env perl
 
 use strict; use warnings;
-use Text::Perfide::PartialAlign;
+use Text::Perfide::PartialAlign qw/
+		usage 
+		subcorpora2files 
+		calc_pairs 
+		_log
+		get_corpus
+		calc_common_tokens
+		build_chain/;
 use Data::Dumper;
+use Getopt::Long;
 
-our($rs,$sec,$debug,$v,$cf,$max,$all);
-$rs //= "\n";
-$rs = '_sec' if $sec;
-$/ = $rs;
-
-if($sec){ $all = 1; }
-if($all){ $max = 1; }
-if($max){ push @ARGV,$max; }
-main(@ARGV);
-
-sub print_verbose{
-	my ($file,$data) = @_;
-	open my $fh, '>', $file or die;
-	print $fh Dumper($data);
-	close $fh;
-}
-
-sub main {
-	unless (@_ == 5 or @_ == 6){
-		_log("A preprocessor for hunalign.");
-		_log("Cuts a very large sentence-segmented unaligned bicorpus into smaller parts manageable by hunalign.");
-		_log("");
-		_log("Usage: $0 huge_text_in_one_language huge_text_in_other_language output_filename name_of_first_lang name_of_second_lang [ maximal_size_of_chunks=5000 ] > hunalign_batch");
-		_log("");
-		_log("The two input files must have one line per sentence. Whitespace-delimited tokenization is preferred.");
-		_log("The output is a set of files named output_filename_[123..].name_of_lang");
-		_log("The standard output is a batch job description for hunalign, so this can and should be followed by:");
-		_log("hunalign dictionary.dic -batch hunalign_batch");
-		exit -1;
-	}
-
-	my $maximalChunkSize = (@_==6 ? $_[5] : 5000);
-	my ($huFilename,$enFilename,$outputFilename,$huLangName,$enLangName) = @_[0..5];
-
-	_log("Reading corpora...");
-	my ($huCorpus, $huOffsets, $huTextRef) = get_corpus($huFilename);
-	my ($enCorpus, $enOffsets, $enTextRef) = get_corpus($enFilename);
-	_log("Done.");
-
-	my $huFreq = tokenFreq($huCorpus);  # Map word => frequency (number of times word appears in corpus)
-	my $enFreq = tokenFreq($enCorpus);
-	my $huHap  = hapaxes($huFreq);  	# Words which have frequency = 1
-	my $enHap  = hapaxes($enFreq);
+my $options = {};
+my $result = GetOptions ($options,
+	'rs=s'		,
+	'sec'		,
+	'debug'		,
+	'v'			,
+	'cf'		,
+	'max=i'		,
+	'all'		,
+);
+$options->{rs} //= "\n";
+$options->{rs}= '_sec' if $options->{sec};
+$/ = $options->{rs};
+if($options->{sec}){ $options->{all} = 1; }
+if($options->{all}){ $options->{max} = 1; }
+if($options->{max}){ push @ARGV,$options->{max}; }
 
 
-	my $commonHap   = findCommonHap($huHap,$enHap,$cf);
-	my $huPositions = hapaxPositions($huHap, $huCorpus); # Map word => id_sentence
-	my $enPositions = hapaxPositions($enHap, $enCorpus);
-	print_verbose("$$.huPositions",$huPositions) if $v;
-	print_verbose("$$.enPositions",$enPositions) if $v;
+usage(@ARGV) unless (@ARGV == 5 or @ARGV == 6);
+my $maximalChunkSize = (@ARGV==6 ? $ARGV[5] : 5000);
+my ($huFilename,$enFilename,$outputFilename,$huLangName,$enLangName) = @ARGV[0..5];
 
+_log("Reading corpora...");
+my ($huCorpus, $huOffsets, $huTextRef) = get_corpus($huFilename);
+my ($enCorpus, $enOffsets, $enTextRef) = get_corpus($enFilename);
+_log("Done.");
 
-	my $pairs = [];					# (id_sentence_file1, id_sentence_file2)
-	print_verbose("$$.commonHap",$commonHap) if $v;
-	for my $t (keys %$commonHap) {
-		# print "$huPositions->[$t]\t$enPositions->[$t]\t$t\n";
-		my $hup = $huPositions->{$t};
-		my $enp = $enPositions->{$commonHap->{$t}};
-		push @$pairs, [$hup, $enp];
-	}
-	push @$pairs, [0,0];
+my ($commonHap,$huPositions,$enPositions) = calc_common_tokens($huCorpus,$enCorpus);
+my $pairs = calc_pairs($commonHap,$huPositions,$enPositions,$huCorpus,$enCorpus);
+my $chain = build_chain($pairs,$maximalChunkSize,$options);
+subcorpora2files($chain,$huTextRef,$enTextRef,$huOffsets,$enOffsets,$outputFilename,$huLangName,$enLangName);
 
-	my $corpusSizes = [ scalar @$huCorpus, scalar @$enCorpus ];
-	push @$pairs, $corpusSizes;
-
-	$pairs = bagSort($pairs);
-
-
-	_log("Computing maximal chain in poset...");
-	print_verbose("$$.pairs",$pairs) if $v;
-	my $chain = maximalChain($pairs);
-	_log("Done.");
-	_log((scalar @$chain)." long chain found in ".(scalar @$pairs)." sized poset...");
-
-	if($maximalChunkSize > 0) {
-		_log("Selecting at most $maximalChunkSize sized chunks...");
-		($chain,my $forced) = selectFromChain($chain,$maximalChunkSize);
-		_log(scalar(@$chain)." chunks selected.");
-		_log("Done.");
-		_log("WARNING: maximalChunkSized could not be obeyed.") if $forced;
-	}
-
-	print_verbose("$$.chain",$chain) if $v;
-
-	# Unreachable code, FIXME!
-	my $debug = 0;
-	if($debug) {
-		my $justResult = 1;
-		my $chainToPrint = ($justResult ? @$chain[0..@$chain-2] : @$pairs[0..@$pairs-2] );
-
-		for my $ref (@$chainToPrint) {
-			my ($huPos,$enPos) = @$ref;
-			my $s = (join ' ',$huCorpus->[$huPos]) . "\t" . (join ' ',$enCorpus->[$enPos]);
-			if($justResult){
-				print "$s\n";
-			} else {
-				$s+="\t<<<<<<<<" if grep { $_->[0] == $huPos and $_->[1] == $enPos } @$chain;
-				print "$s\n";
-				print;
-			}
-		}
-	}
-	else {
-		# Unreachable code, FIXME!
-		my $justPrintChain = 0;
-		if($justPrintChain) {
-			for my $p (@$chain) {
-				print "$p->[0]\n$p->[1]\n";
-			}
-		}
-
-		# Normal execution
-		else {
-
-			my @newchain = ([-1,-1,0]);;
-
-			for my $i (@$chain){
-				if($i->[0] != $newchain[-1][0] and $i->[1] != $newchain[-1][1]){
-					push @newchain,$i;
-				}
-				else {
-					$newchain[-1][2]+= $i->[2];
-				}
-			}
-
-			shift @newchain;
-			print_verbose("$$.newchain",\@newchain) if $v;
-			$chain = \@newchain;
-
-			_log("Writing subcorpora to files...");
-			my $lastPos = [0,0];
-			my $ind = 1;
-			for my $pos (@$chain) {
-				next if $pos->[0] == $lastPos->[0] and $pos->[1] == $lastPos->[1];
-				my $baseFilename = "${outputFilename}_$ind";
-				my $huSubCorpus = strInterval($huTextRef, $lastPos->[0], $pos->[0],$huOffsets);
-				my $enSubCorpus = strInterval($enTextRef, $lastPos->[1], $pos->[1],$enOffsets);
-				my $huFilename = "$baseFilename.$huLangName";
-				open my $huFile, '>', $huFilename;
-				print $huFile $huSubCorpus;
-				close $huFile;
-
-
-				my $enFilename = "$baseFilename.$enLangName";
-				open my $enFile, '>', $enFilename;
-				print $enFile $enSubCorpus;
-				close $enFile;
-
-	#			print "$huFilename\t$enFilename\t$baseFilename.align\n";
-
-				$lastPos = $pos;
-				$ind++;
-			}
-			_log("Done.");
-		}
-	}
-}
 
 __END__
 
@@ -170,22 +53,22 @@ partial_align2 - aligner ........
 
 =head1 SYNOPSIS
 
- partial_align2 [option] file1 file2 output_prefix l1 l2
+ partial_align2 [options] file1 file2 output_prefix l1 l2
  
 =head1 DESCRIPTION
 
 =head2 Options
 
- -rs=...	Define record separator (Perl's $/). Default is the newline character (\n).
- -sec   	Split by section annotations added by Text::Perfide::BookCleaner (same as -rs=_sec -all).
+ --rs=...	Define record separator (Perl's $/). Default is the newline character (\n).
+ --sec   	Split by section annotations added by Text::Perfide::BookCleaner (same as -rs=_sec -all).
  -v		Create several files with dumps of auxiliary structures.
- -cf=... 	Pass an additional file containing correspondences between the two languages.
+ --cf=... 	Pass an additional file containing correspondences between the two languages.
  		File must follow the format
 
 				term(,term)* = term(,term)*
 
- -all		Try to split in as many files as possible (same as -max=1).
- -max=...	Maximum size of the split files (in bytes).
+ --all		Try to split in as many files as possible (same as -max=1).
+ --max=...	Maximum size of the split files (in bytes).
 
 =head2 EXPORT
 

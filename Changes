@@ -1,5 +1,7 @@
 Revision history for Text-Perfide-PartialAlign
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+
+
+0.01_03    Wed May 30 17:32:31 WEST 2012
+        Code refactoring (moved major functions from bin/pf-partialalign to PartialAlign.pm)
 

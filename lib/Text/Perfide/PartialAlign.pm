@@ -7,20 +7,19 @@ use Data::Dumper;
 
 =head1 NAME
 
-Text::Perfide::PartialAlign - The great new Text::Perfide::PartialAlign!
+Text::Perfide::PartialAlign - Split large bitexts into smaller files.
 
 =head1 VERSION
 
-Version 0.01
+Version 0.01_03
 
 =cut
 
-our $VERSION = '0.01_02';
+our $VERSION = '0.01_03';
 
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
 
 Perhaps a little code snippet.
 
@@ -38,27 +37,165 @@ A list of functions that can be exported.  You can delete this section if you do
 =cut
 
 use base 'Exporter';
-our @EXPORT = (qw/
-	tokenFreq
-	hapaxes
-	hapaxPositions
-	uniqSort
-	bagSort
-	less
-	less_or_equal
-	maximalChain
-	selectFromChain
-	_log
-	findCommonHap
+
+our @EXPORT_OK = qw/
 	get_corpus
-	strInterval
+	usage
+	subcorpora2files
+	calc_pairs
+	build_chain
+	calc_common_tokens
+	findCommonHap
 	seg_split
-	token_split
-	/);
+	_log
+	/;
 
 sub _log {
 	print STDERR "$_[0]\n";
 }
+
+sub _print_verbose{
+	my ($file,$data) = @_;
+	open my $fh, '>', $file or die;
+	print $fh Dumper($data);
+	close $fh;
+}
+
+
+=head2 build_chain
+
+=cut
+
+sub build_chain {
+	my ($pairs,$maximalChunkSize,$options) = @_;
+	_log("Computing maximal chain in poset...");
+	_print_verbose("$$.pairs",$pairs) if $options->{v};
+	my $chain = maximalChain($pairs);
+	_log("Done.");
+	_log((scalar @$chain)." long chain found in ".(scalar @$pairs)." sized poset...");
+
+	if($maximalChunkSize > 0) {
+		_log("Selecting at most $maximalChunkSize sized chunks...");
+		($chain,my $forced) = selectFromChain($chain,$maximalChunkSize);
+		_log(scalar(@$chain)." chunks selected.");
+		_log("Done.");
+		_log("WARNING: maximalChunkSized could not be obeyed.") if $forced;
+	}
+
+	_print_verbose("$$.chain",$chain) if $options->{v};
+
+	my @newchain = ([-1,-1,0]);
+
+	for my $i (@$chain){
+		if($i->[0] != $newchain[-1][0] and $i->[1] != $newchain[-1][1]){
+			push @newchain,$i;
+		}
+		else {
+			$newchain[-1][2]+= $i->[2];
+		}
+	}
+
+	shift @newchain;
+	_print_verbose("$$.newchain",\@newchain) if $options->{v};
+	$chain = \@newchain;
+	return $chain;
+}
+
+=head2 calc_common_tokens
+
+=cut 
+
+sub calc_common_tokens {
+	my ($huCorpus,$enCorpus,$options) = @_;
+	my $huFreq = tokenFreq($huCorpus);  # Map word => frequency (number of times word appears in corpus)
+	my $enFreq = tokenFreq($enCorpus);
+	my $huHap  = hapaxes($huFreq);  	# Words which have frequency = 1
+	my $enHap  = hapaxes($enFreq);
+
+	my $commonHap   = findCommonHap($huHap,$enHap,$options->{cf});
+	my $huPositions = hapaxPositions($huHap, $huCorpus); # Map word => id_sentence
+	my $enPositions = hapaxPositions($enHap, $enCorpus);
+	_print_verbose("$$.huPositions",$huPositions) if $options->{v};
+	_print_verbose("$$.enPositions",$enPositions) if $options->{v};
+	return ($commonHap,$huPositions,$enPositions);
+}
+
+=head2 calc_pairs
+
+=cut
+
+sub calc_pairs{
+	my ($commonHap,$huPositions,$enPositions,$huCorpus,$enCorpus,$options) = @_;
+	my $pairs = [];					# (id_sentence_file1, id_sentence_file2)
+	_print_verbose("$$.commonHap",$commonHap) if $options->{v};
+	for my $t (keys %$commonHap) {
+		my $hup = $huPositions->{$t};
+		my $enp = $enPositions->{$commonHap->{$t}};
+		push @$pairs, [$hup, $enp];
+	}
+	push @$pairs, [0,0];
+
+	my $corpusSizes = [ scalar @$huCorpus, scalar @$enCorpus ];
+	push @$pairs, $corpusSizes;
+
+	$pairs = bagSort($pairs);
+	return $pairs;
+}
+
+
+
+=head2 subcorpora2files
+
+Writes subcorpora to files.
+
+=cut
+
+sub subcorpora2files {
+	my ($chain,$huTextRef,$enTextRef,$huOffsets,$enOffsets,$outputFilename,$huLangName,$enLangName) = @_;
+	_log("Writing subcorpora to files...");
+	my $lastPos = [0,0];
+	my $ind = 1;
+	for my $pos (@$chain) {
+		next if $pos->[0] == $lastPos->[0] and $pos->[1] == $lastPos->[1];
+		my $baseFilename = "${outputFilename}_$ind";
+		my $huSubCorpus = strInterval($huTextRef, $lastPos->[0], $pos->[0],$huOffsets);
+		my $enSubCorpus = strInterval($enTextRef, $lastPos->[1], $pos->[1],$enOffsets);
+		my $huFilename = "$baseFilename.$huLangName";
+		open my $huFile, '>', $huFilename;
+		print $huFile $huSubCorpus;
+		close $huFile;
+
+		my $enFilename = "$baseFilename.$enLangName";
+		open my $enFile, '>', $enFilename;
+		print $enFile $enSubCorpus;
+		close $enFile;
+
+		print "$huFilename\t$enFilename\t$baseFilename.align\n";
+
+		$lastPos = $pos;
+		$ind++;
+	}
+	_log("Done.");
+}
+
+=head2 usage
+
+Prints a short description and usage details.
+
+=cut
+
+sub usage {
+	_log("Perl port of partialAlign.py, 'a preprocessor for hunalign', with some tweaks.");
+	_log("Cuts a very large sentence-segmented unaligned bicorpus into smaller parts.");
+	_log("");
+	_log("Usage: $0 huge_text_in_one_language huge_text_in_other_language output_filename name_of_first_lang name_of_second_lang [ maximal_size_of_chunks=5000 ] > hunalign_batch");
+	_log("");
+	_log("The two input files must have one line per sentence. Whitespace-delimited tokenization is preferred.");
+	_log("The output is a set of files named output_filename_[123..].name_of_lang");
+	exit -1;
+}
+
+
 
 =head2 tokenFreq
 
@@ -399,7 +536,8 @@ sub strInterval {
 =head2 parseCorrespFile
 
 Parses a given file with correspondences between two given languages. File must follow the following DSL:
-	file :				correspondence*
+	file :				header correspondence*
+	header:				'langs:' L1, L2
 	correspondence :	term (',' term)* '=' term (',' term)*
 	term :				word (\s word)*
 
@@ -411,6 +549,11 @@ sub parseCorrespFile {
 	my ($filepath) = @_;
 	open my $fh, '<', $filepath or die;
 	my $corresp_list = [];
+
+	my $header = <$fh>;
+	$header =~ /^langs:\s*(\w+)\s*,\s*(\w+)/i;
+	my ($l1,$l2) = ($1,$2);
+
 	while (<$fh>){
 		s/#.*$//;
 		next if /^\s*$/;
@@ -421,10 +564,6 @@ sub parseCorrespFile {
 		push @$corresp_list, [$terms_l1,$terms_l2];
 	}
 	close $fh;
-
-	# open my $debugfh, '>', "$$.corresp" or die;
-	# print $debugfh Dumper($corresp_list);
-	# close $debugfh;
 
 	return $corresp_list;
 }
